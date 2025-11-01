@@ -1,0 +1,138 @@
+// src/components/QrScanner.js
+
+import React, { useState, useEffect } from 'react';
+import QrReader from 'react-qr-reader'; 
+import { db, ref, set, update, serverTimestamp, onValue } from '../Firebase/Firebase'; 
+
+function QrScanner({ lockerId, actionType, onActionComplete }) {
+  const [isScanning, setIsScanning] = useState(false); 
+  const [scanResult, setScanResult] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lockerData, setLockerData] = useState({});
+  const [stopScanner, setStopScanner] = useState(false); 
+
+  // --- Listener เฉพาะ Locker ที่เลือก ---
+  useEffect(() => {
+      if (!lockerId) return;
+      const dbRef = ref(db, `lockers/${lockerId}`);
+      const unsubscribe = onValue(dbRef, (snapshot) => {
+          setLockerData(snapshot.val() || {});
+      });
+      return () => unsubscribe();
+  }, [lockerId]);
+
+  // --- Effect เพื่อรีเซ็ตสถานะการหยุดหลังจากสแกนสำเร็จ ---
+  useEffect(() => {
+      if (stopScanner) {
+          const timer = setTimeout(() => {
+              setStopScanner(false);
+          }, 500); 
+          return () => clearTimeout(timer);
+      }
+  }, [stopScanner]);
+
+  const handleError = (err) => {
+    console.error("เกิดข้อผิดพลาดจากกล้อง:", err);
+  };
+
+  const handleValidationAndSave = async (ownerId) => {
+      setIsSaving(true);
+
+      try {
+          // ⭐ FIX: กำหนดสถานะปัจจุบัน โดยถือว่าไม่มีข้อมูล = 'AVAILABLE' เสมอ
+          const currentStatus = lockerData.status || 'AVAILABLE';
+
+          if (actionType === 'DEPOSIT') {
+              // 🔴 กรณีเก็บรองเท้า (Deposit)
+              if (currentStatus === 'AVAILABLE') {
+                  const updates = {
+                      status: 'OCCUPIED',
+                      ownerId: ownerId, 
+                      deposit_time: serverTimestamp(),
+                      // ⭐ NEW: เพิ่มสถานะ Relay 1 = สั่งเปิดประตู
+                      relay_command: 1 
+                  };
+                  await update(ref(db, `lockers/${lockerId}`), updates);
+                  alert(`✅ เก็บสำเร็จ! สั่งเปิด Locker ${lockerId} เพื่อฝากรองเท้า`);
+                  onActionComplete(lockerId, true); 
+              } else {
+                 // ถ้าสถานะเป็น OCCUPIED (จากการตรวจสอบจริง)
+                 alert(`❌ ล็อกเกอร์ ${lockerId} ไม่ว่าง! (ถูกจองแล้ว)`);
+                 onActionComplete(lockerId, false, true); // กลับไปหน้าเลือก Locker
+              }
+          } else if (actionType === 'WITHDRAW') {
+              // 🟢 กรณีนำออก (Withdrawal)
+              if (currentStatus === 'OCCUPIED' && lockerData.ownerId === ownerId) {
+                  const updates = {
+                      status: 'AVAILABLE',
+                      ownerId: null, // ล้าง ownerId
+                      withdrawal_time: serverTimestamp(),
+                      // ⭐ NEW: เพิ่มสถานะ Relay 1 = สั่งเปิดประตู
+                      relay_command: 1
+                  };
+                  await update(ref(db, `lockers/${lockerId}`), updates);
+                  alert(`✅ ยืนยันสำเร็จ! สั่งเปิด Locker ${lockerId} เพื่อนำรองเท้าออก`);
+                  onActionComplete(lockerId, true); 
+              } else {
+                  alert('❌ ยืนยันไม่สำเร็จ! รหัสไม่ตรงกับเจ้าของล็อกเกอร์');
+                  onActionComplete(lockerId, false); 
+              }
+          }
+      } catch (error) {
+          console.error("Firebase Update Error:", error);
+          alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล (อาจเป็นปัญหาด้านสิทธิ์)");
+          onActionComplete(lockerId, false);
+      } finally {
+          setIsSaving(false);
+      }
+  };
+
+  const handleScan = (data) => {
+    if (data) {
+      setScanResult(data);
+      handleValidationAndSave(data); 
+
+      setStopScanner(true); 
+      setIsScanning(false); 
+    }
+  };
+
+  // --- FIX: ฟังก์ชันเริ่มสแกนด้วย setTimeout (แก้ปัญหา Play Interruption) ---
+  const startScanning = () => {
+    setScanResult(null); 
+    setTimeout(() => {
+        setIsScanning(true);
+    }, 1); 
+  };
+
+  return (
+    <div style={{ padding: '20px', textAlign: 'center' }}>
+      <h2>2. สแกน QR Code (LINE ID)</h2>
+      <h3>กำลังดำเนินการ: **{actionType}** สำหรับ Locker **{lockerId}**</h3>
+
+      <button onClick={startScanning} disabled={isScanning || isSaving || stopScanner}
+        style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer', margin: '20px 0' }}
+      >
+        {isScanning ? 'กำลังรอการสแกน...' : isSaving ? 'กำลังตรวจสอบ...' : 'เริ่มสแกน QR Code'}
+      </button>
+
+      {isScanning && !stopScanner && (
+        <div style={{ width: '300px', margin: '20px auto', border: '2px solid #61dafb' }}>
+          <QrReader key="scanner-active" delay={100} onError={handleError} onScan={handleScan}
+            style={{ width: '100%' }} constraints={{ facingMode: 'environment' }} 
+          />
+        </div>
+      )}
+      
+      <p style={{ marginTop: '20px' }}>สถานะ: **{isSaving ? 'กำลังตรวจสอบ...' : scanResult ? 'สแกนสำเร็จ' : 'รอการสแกน'}**</p>
+      
+      {scanResult && <p>ค่าที่สแกนได้: {scanResult}</p>}
+      
+      <button onClick={() => onActionComplete(lockerId, false, true)} style={{ marginTop: '20px' }}>
+          กลับไปหน้าเลือกล็อกเกอร์
+      </button>
+    </div>
+  );
+}
+
+export default QrScanner;

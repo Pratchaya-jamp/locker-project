@@ -1,0 +1,86 @@
+// src/components/QrScanner.js
+
+import React, { useState } from 'react';
+// นำเข้า db และฟังก์ชันที่จำเป็นจากไฟล์ตั้งค่า Firebase ของคุณ
+import { db, ref, push, set, serverTimestamp } from '../Firebase/Firebase'; 
+import QrReader from 'react-qr-reader';
+
+function QrScanner() {
+  const [isScanning, setIsScanning] = useState(false); // ควบคุมการเปิด/ปิดกล้อง
+  const [scanResult, setScanResult] = useState(null);
+  const [isSaving, setIsSaving] = useState(false); // ควบคุมสถานะการบันทึก
+
+  const handleError = (err) => {
+    console.error("เกิดข้อผิดพลาดจากกล้อง:", err);
+  };
+
+  const saveToDatabase = async (qrCodeData) => {
+    setIsSaving(true);
+    
+    try {
+        // 1. กำหนด Path ที่จะเก็บข้อมูลใน Realtime DB (เช่น โหนด 'scans')
+        const dbRef = ref(db, 'scans'); 
+        
+        // 2. สร้าง Reference ใหม่ด้วย push() เพื่อให้ได้คีย์ ID ที่ไม่ซ้ำกันโดยอัตโนมัติ
+        const newRecordRef = (dbRef); 
+        
+        // 3. บันทึกข้อมูล
+        await set(newRecordRef, {
+            data: qrCodeData,
+            scanned_at: serverTimestamp(), 
+            // สามารถเพิ่มข้อมูลอื่น ๆ เช่น user_id, location, etc.
+        });
+        
+        console.log('บันทึกข้อมูล QR Code สำเร็จ:', qrCodeData);
+    } catch (error) {
+        console.error('เกิดข้อผิดพลาดในการบันทึก:', error);
+    } finally {
+        setIsSaving(false);
+    }
+  };
+
+  const handleScan = (data) => {
+    if (data) {
+      setIsScanning(false); // สแกนสำเร็จ ปิดกล้อง
+      setScanResult(data);
+      saveToDatabase(data); // บันทึกข้อมูลที่ได้
+    }
+  };
+
+  return (
+    <div style={{ padding: '20px', textAlign: 'center' }}>
+      <h1>เครื่องสแกน QR Code</h1>
+      
+      {/* ปุ่มควบคุมการเริ่มสแกน */}
+      <button 
+        onClick={() => setIsScanning(true)} 
+        disabled={isScanning || isSaving}
+        style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }}
+      >
+        {isScanning ? 'กำลังรอการสแกน...' : 
+         isSaving ? 'กำลังบันทึก...' : 'เริ่มสแกน QR Code'}
+      </button>
+
+      {/* Component QrReader จะถูก Render เมื่อ isScanning เป็น true เท่านั้น */}
+      {isScanning && (
+        <div style={{ width: '300px', margin: '20px auto', border: '1px solid #ccc' }}>
+          <QrReader
+            delay={300} // หน่วงเวลา 300ms ระหว่างการสแกน
+            onError={handleError}
+            onScan={handleScan}
+            style={{ width: '100%' }}
+            // เลือกว่าจะใช้กล้องหน้า (user) หรือกล้องหลัง (environment)
+            constraints={{ facingMode: 'environment' }} 
+          />
+        </div>
+      )}
+      
+      {/* แสดงผลการสแกน */}
+      <p style={{ marginTop: '20px' }}>
+        ข้อมูลที่สแกนได้: <strong>{scanResult || 'รอการเริ่มสแกน...'}</strong>
+      </p>
+    </div>
+  );
+}
+
+export default QrScanner;

@@ -1,0 +1,84 @@
+// src/components/LockerManager.js
+
+import React, { useState, useEffect } from 'react';
+import { db, ref, onValue } from '../Firebase/Firebase'; 
+
+// สมมติว่านี่คือรายการ Locker ทั้งหมดในระบบ
+const ALL_LOCKERS = ["Locker_A01", "Locker_A02", "Locker_A03", "Locker_B01", "Locker_B02"];
+
+function LockerManager({ onStartAction }) {
+    const [lockerStatuses, setLockerStatuses] = useState({}); // สถานะ Realtime จาก DB
+
+    // --- Realtime Listener สำหรับสถานะ Locker ทั้งหมด ---
+    useEffect(() => {
+        const dbRef = ref(db, 'lockers');
+        
+        const unsubscribe = onValue(dbRef, (snapshot) => {
+            const data = snapshot.val() || {};
+            setLockerStatuses(data);
+        });
+
+        return () => unsubscribe(); 
+    }, []);
+
+    const handleSelectLocker = (lockerId, type) => {
+        const status = lockerStatuses[lockerId]?.status || 'AVAILABLE';
+        
+        if (type === 'DEPOSIT' && status === 'OCCUPIED') {
+            alert(`Locker ${lockerId} ไม่ว่าง! กรุณาเลือกล็อกเกอร์อื่น`);
+            return;
+        }
+        if (type === 'WITHDRAW' && status === 'AVAILABLE') {
+            alert(`Locker ${lockerId} ว่างอยู่! ไม่มีรองเท้าให้เอาออก`);
+            return;
+        }
+
+        onStartAction(lockerId, type);
+    };
+
+    const getStatusColor = (id) => {
+        const status = lockerStatuses[id]?.status;
+        if (status === 'OCCUPIED') return 'red';
+        if (status === 'AVAILABLE') return 'green';
+        return 'gray';
+    };
+
+    return (
+        <div style={{ padding: '20px', textAlign: 'center' }}>
+            <h2>1. เลือกล็อกเกอร์และดำเนินการ</h2>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
+                {ALL_LOCKERS.map((id) => (
+                    <div key={id} style={{ 
+                        margin: '10px', 
+                        padding: '15px', 
+                        border: `2px solid ${getStatusColor(id)}`,
+                        borderRadius: '8px',
+                        width: '150px',
+                    }}>
+                        <strong>{id}</strong>
+                        <p style={{ color: getStatusColor(id), fontWeight: 'bold' }}>
+                            {lockerStatuses[id]?.status || 'AVAILABLE'}
+                        </p>
+                        
+                        <button 
+                            onClick={() => handleSelectLocker(id, 'DEPOSIT')}
+                            disabled={lockerStatuses[id]?.status === 'OCCUPIED'}
+                            style={{ margin: '5px', padding: '5px 10px' }}
+                        >
+                            เก็บ (Deposit)
+                        </button>
+                        <button 
+                            onClick={() => handleSelectLocker(id, 'WITHDRAW')}
+                            disabled={lockerStatuses[id]?.status === 'AVAILABLE'}
+                            style={{ margin: '5px', padding: '5px 10px' }}
+                        >
+                            นำออก (Withdraw)
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+export default LockerManager;
