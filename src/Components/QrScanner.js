@@ -59,7 +59,7 @@ function QrScanner({ lockerId, actionType, onActionComplete }) {
         }
       } else if (actionType === 'WITHDRAW') {
         if (currentStatus === 'OCCUPIED' && lockerData.ownerId === ownerId) {
-            const updates = { status: 'AVAILABLE', ownerId: null, deposit_time: null, withdrawal_time: serverTimestamp(), relay_command: 1 };
+            const updates = { status: 'AVAILABLE', ownerId: null, deposit_time: null, withdrawal_time: serverTimestamp(), relay_command: 0 };
             await update(ref(db, `lockers/${lockerId}`), updates);
             alert(`✅ ยืนยันสำเร็จ! สั่งเปิด Locker ${lockerId} เพื่อนำรองเท้าออก`);
             onActionComplete(lockerId, true); 
