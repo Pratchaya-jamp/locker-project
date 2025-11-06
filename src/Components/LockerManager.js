@@ -20,7 +20,8 @@ import {
 import { 
     query, 
     orderByChild, 
-    limitToLast
+    limitToLast,
+    update
 } from 'firebase/database';
 
 
