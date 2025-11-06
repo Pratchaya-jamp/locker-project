@@ -221,10 +221,19 @@ function LockerManager({ onStartAction }) {
     const handleAdminToggleLocker = async (lockerId) => {
         const currentStatus = getLockerStatus(lockerId);
         const newStatus = currentStatus === 'AVAILABLE' ? 'OCCUPIED' : 'AVAILABLE';
+        const newRelayCommand = (newStatus === 'OCCUPIED') ? 1 : 0;
+        const payload = {
+            relay_command: newRelayCommand,
+            status: newStatus
+        }
+
+        if (newStatus === 'AVAILABLE') {
+            payload.withdrawal_time = serverTimestamp()
+        }
         
         try {
             const lockerRef = ref(db, `lockers/${lockerId}`);
-            await set(lockerRef, { status: newStatus });
+            await update(lockerRef, payload);
             logHistory('ADMIN_TOGGLE', lockerId);
             alert(`Admin: เปลี่ยนสถานะ ${lockerId} เป็น ${newStatus} สำเร็จ`);
         } catch (error) {
